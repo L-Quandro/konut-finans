@@ -1,0 +1,10 @@
+{
+  "name": "Konut Finans",
+  "short_name": "Konut Finans",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "lang": "tr"
+}
