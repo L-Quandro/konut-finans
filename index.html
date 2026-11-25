@@ -6,7 +6,12 @@
 <meta name="theme-color" content="#000000">
 <meta name="description" content="Reklamsız konut kredisi hesaplayıcısı.">
 <title>Konut Finans</title>
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="manifest" href="/konut-finans/manifest.webmanifest">
+<link rel="icon" href="/konut-finans/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/konut-finans/icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Konut Finans">
 <style>
 :root{color-scheme:dark;--bg:#000;--panel:#101410;--panel2:#171e17;--line:#293329;--muted:#9aa69a;--white:#f4f8f1;--green:#a8ff60;--green2:#d0ffad;--danger:#ff817c}
 *{box-sizing:border-box}
@@ -54,6 +59,13 @@ input[type=range]::-moz-range-thumb{width:17px;height:17px;border-radius:50%;bac
 .summary{display:grid;gap:0}.summary .metric{padding:13px 0;border-bottom:1px solid #263126}.summary .metric:first-child{padding-top:0}.summary .metric:last-child{border:0;padding-bottom:0}
 .note{margin:13px 0 0;padding:12px;border-radius:11px;background:#080c08;color:#8f9b8d;font-size:10px;line-height:1.55}
 .negative{color:var(--danger)!important}
+
+.fee-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:16px 0 0;padding:13px 14px;border:1px solid #354334;border-radius:12px;background:#080d08;color:var(--green);font-size:13px;font-weight:750;text-align:left}
+.fee-toggle .plus{font-size:20px;line-height:1}
+.fee-panel{display:none;margin-top:10px;padding:14px;border:1px solid #293729;border-radius:12px;background:#080c08}
+.fee-panel.open{display:block}
+.fee-panel p{font-size:10px;color:var(--muted);line-height:1.5;margin:9px 0 0}
+
 footer{text-align:center;color:#687466;font-size:10px;padding:16px 5px 6px}
 @media(max-width:430px){.app{padding-left:13px;padding-right:13px}.card{padding:16px}.two{grid-template-columns:1fr}.hero{padding:21px 18px}.hero-amount{font-size:40px}}
 </style>
@@ -106,17 +118,23 @@ footer{text-align:center;color:#687466;font-size:10px;padding:16px 5px 6px}
 <div class="metric"><span>Toplam geri ödeme</span><strong id="total">₺0</strong></div>
 <div class="metric"><span>Toplam faiz maliyeti</span><strong id="interest">₺0</strong></div>
 <div class="metric"><span>Yıllık Maliyet Oranı*</span><strong id="annualRate">%0,00</strong></div>
+<button type="button" class="fee-toggle" id="feeToggle" aria-expanded="false" aria-controls="feePanel"><span>Banka masrafı gir</span><span class="plus" id="feePlus">＋</span></button>
+<div class="fee-panel" id="feePanel">
+  <div class="label-row"><label for="bankFees">Toplam peşin banka / işlem masrafı</label><span class="helper">TL</span></div>
+  <div class="input-shell"><span class="prefix">₺</span><input id="bankFees" type="text" inputmode="numeric" autocomplete="off" placeholder="0"></div>
+  <p>Banka tahsis ücreti, ekspertiz ve ipotek gibi kredi kullandırılırken bir defa ödenen masrafları toplam olarak gir. Bu tutar, kredi tutarından düşülerek yıllık oran yeniden hesaplanır. Düzenli aylık sigorta veya başka taksitler bu alana dahil edilmez.</p>
+</div>
 <div class="metric"><span>Kredi tutarı</span><strong id="principal">₺0</strong></div>
 <div class="metric"><span>Kredi + peşinat</span><strong id="funding">₺0</strong></div>
 </div>
-<p class="note">*Yıllık oran, girilen aylık faizden bileşik olarak hesaplanan yaklaşık efektif yıllık faiz oranıdır; bankanın resmî yıllık maliyet oranı değildir. Hesaplamaya Banka Tahsis Ücreti, ortalama ekspertiz ücreti, ipotek ücreti, sigorta, vergi ve diğer banka/işlem masrafları dahil değildir. Kesin maliyet için bankanın yazılı ödeme planı ve ücretleri esas alınmalıdır.</p>
+<p class="note">*Yıllık Maliyet Oranı, girilen aylık taksit ve peşin banka masraflarına göre yaklaşık efektif yıllık maliyet tahminidir. Masraf girilmezse yalnızca aylık faizden hesaplanır. Düzenli/aylık sigorta, vergiler ve diğer dönemsel giderler dahil değildir; bankanın resmî yıllık maliyet oranı yerine geçmez. Kesin değer için bankanın tüm nakit akışlarını içeren yazılı ödeme planı esas alınmalıdır.</p>
 </section>
 <footer>Hesaplamalar cihazında yapılır · Konut Finans</footer>
 </div>
 <script>
 (()=> {
 const $=id=>document.getElementById(id);
-const moneyIds=['loan','price','cash'];
+const moneyIds=['loan','price','cash','bankFees'];
 const digitsOnly=s=>String(s??'').replace(/\D/g,'');
 const parseMoney=id=>{const d=digitsOnly($(id).value);return d?Number(d):0};
 const fmt=n=>new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY',maximumFractionDigits:0}).format(Number.isFinite(n)?n:0);
@@ -133,6 +151,17 @@ function formatMoneyInput(el){
  try{el.setSelectionRange(caret,caret)}catch(_){}
 }
 function paintRange(el){const min=Number(el.min),max=Number(el.max),v=Number(el.value);el.style.setProperty('--fill',`${max===min?0:(v-min)/(max-min)*100}%`)}
+function effectiveAnnualFromCashflows(netAmount, payment, months){
+ if(netAmount<=0||payment<=0||months<1)return null;
+ if(Math.abs(netAmount-payment*months)<0.005)return 0;
+ const pv=(rate)=>rate===0?payment*months:payment*(1-Math.pow(1+rate,-months))/rate;
+ let low=0,high=1;
+ while(pv(high)>netAmount && high<1e6)high*=2;
+ if(high>=1e6)return null;
+ for(let i=0;i<120;i++){const mid=(low+high)/2;if(pv(mid)>netAmount)low=mid;else high=mid;}
+ const monthly=(low+high)/2;
+ return (Math.pow(1+monthly,12)-1)*100;
+}
 function calc(){
  const p=val('loan'),r=val('rate')/100;
  const rawTerm=$('term').value.trim();
@@ -145,8 +174,9 @@ function calc(){
  $('monthlyPayment').textContent=fmt(m);
  $('termSummary').textContent=n+' ay vade';
  $('rateSummary').textContent='Aylık %'+val('rate').toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2});
- const annualEffective=(Math.pow(1+r,12)-1)*100;
- $('annualRate').textContent='%'+annualEffective.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2});
+ const bankFees=val('bankFees');
+ const annualEffective=effectiveAnnualFromCashflows(p-bankFees,m,n);
+ $('annualRate').textContent=annualEffective===null?'—':'%'+annualEffective.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2});
  $('termWords').textContent=n>=12?`${Math.floor(n/12)} YIL${n%12?' '+n%12+' AY':''}`:`${n} AY`;
  $('total').textContent=fmt(total);$('interest').textContent=fmt(total-p);$('principal').textContent=fmt(p);$('funding').textContent=fmt(p+cash);
  const gap=price-p-cash;$('gap').textContent=fmt(Math.max(0,gap));$('gap').classList.toggle('negative',gap>0);
@@ -160,13 +190,15 @@ moneyIds.forEach(id=>{
  el.addEventListener('blur',()=>{formatMoneyInput(el);calc()});
 });
 $('loanRange').addEventListener('input',e=>{$('loan').value=Number(e.target.value).toLocaleString('tr-TR');calc()});
+$('feeToggle').addEventListener('click',()=>{const open=$('feePanel').classList.toggle('open');$('feeToggle').setAttribute('aria-expanded',String(open));$('feePlus').textContent=open?'−':'＋';});
+
 $('rate').addEventListener('input',()=>{if(val('rate')<=8)$('rateRange').value=val('rate');calc()});
 $('rateRange').addEventListener('input',e=>{$('rate').value=e.target.value;calc()});
 $('term').addEventListener('input',()=>{if($('term').value.trim()===''){return}calc()});
 $('term').addEventListener('blur',()=>{const raw=$('term').value.trim();const n=Math.max(1,Math.min(180,Math.round(Number(raw)||1)));$('term').value=n;calc()});
 $('termRange').addEventListener('input',e=>{$('term').value=e.target.value;calc()});
 document.querySelectorAll('[data-term]').forEach(b=>b.addEventListener('click',()=>{$('term').value=b.dataset.term;calc()}));
-$('reset').addEventListener('click',()=>{ $('loan').value='2.000.000';$('rate').value=2.85;$('term').value=120;$('price').value='2.200.000';$('cash').value='200.000';calc()});
+$('reset').addEventListener('click',()=>{ $('loan').value='2.000.000';$('rate').value=2.85;$('term').value=120;$('price').value='2.200.000';$('cash').value='200.000';$('bankFees').value='';$('feePanel').classList.remove('open');$('feeToggle').setAttribute('aria-expanded','false');$('feePlus').textContent='＋';calc()});
 calc();
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}))}
 })();
